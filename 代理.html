@@ -1,0 +1,760 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>蓝盾翻译器 · 代理后台</title>
+<style>
+  /* ===== 蓝盾控制台 · 暗色(与主管理后台同一套设计语言)===== */
+  :root {
+    --bg:#0e1117; --bg-side:#0a0d13; --panel:#151a23; --panel-2:#1a212c; --input:#0f1420;
+    --line:rgba(255,255,255,.07); --line-2:rgba(255,255,255,.12);
+    --txt:#e7ebf3; --txt-2:#9aa6ba; --txt-3:#68738a;
+    --brand:#4f8dff; --brand-soft:rgba(79,141,255,.14);
+    --green:#31c56a; --green-soft:rgba(49,197,106,.13);
+    --amber:#f5a524; --amber-soft:rgba(245,165,36,.13);
+    --red:#ef4d56;   --red-soft:rgba(239,77,86,.13);
+    --purple:#9b7bff; --purple-soft:rgba(155,123,255,.15);
+    --r:11px; --r-sm:7px;
+  }
+  * { box-sizing:border-box; }
+  html,body { height:100%; margin:0; }
+  body {
+    font-family:'PingFang SC','Microsoft YaHei','Segoe UI',system-ui,sans-serif;
+    background:var(--bg); color:var(--txt); font-size:13.5px; -webkit-font-smoothing:antialiased;
+  }
+  button { font-family:inherit; cursor:pointer; }
+  .hidden { display:none !important; }
+
+  /* 登录 */
+  .login-wrap { min-height:100vh; display:flex; align-items:center; justify-content:center;
+    background:radial-gradient(1100px 560px at 50% -15%, #16233d, var(--bg)); }
+  .login-card { width:380px; background:var(--panel); border:1px solid var(--line); border-radius:16px;
+    padding:34px 30px; box-shadow:0 24px 70px rgba(0,0,0,.5); }
+  .brand-hero { display:flex; flex-direction:column; align-items:center; gap:10px; margin-bottom:22px; }
+  .brand-hero .logo { width:52px; height:52px; border-radius:14px; color:#fff; font-size:24px; font-weight:700;
+    display:grid; place-items:center; background:linear-gradient(135deg,#3d84ff,#2f6bff); box-shadow:0 10px 26px rgba(61,132,255,.4); }
+  .brand-hero h1 { font-size:19px; margin:0; letter-spacing:.5px; }
+  .brand-hero p { margin:0; font-size:12px; color:var(--txt-3); }
+  .field { margin-bottom:14px; }
+  .field label { display:block; font-size:12px; color:var(--txt-2); margin-bottom:6px; }
+  .field input { width:100%; background:var(--input); border:1px solid var(--line); border-radius:var(--r-sm);
+    padding:11px 12px; font-size:14px; color:var(--txt); outline:none; transition:border-color .15s; }
+  .field input:focus { border-color:var(--brand); }
+  .btn-primary { width:100%; border:none; border-radius:var(--r-sm); padding:12px; background:var(--brand);
+    color:#fff; font-size:15px; font-weight:600; margin-top:6px; transition:filter .15s, transform .1s; }
+  .btn-primary:hover { filter:brightness(1.08); }
+  .btn-primary:active { transform:scale(.99); }
+  .btn-primary:disabled { opacity:.6; cursor:default; }
+
+  /* 外壳 */
+  .app { display:flex; min-height:100vh; }
+  .sidebar { width:224px; flex:0 0 224px; background:var(--bg-side); border-right:1px solid var(--line);
+    display:flex; flex-direction:column; padding:18px 14px; position:sticky; top:0; height:100vh; }
+  .brand { display:flex; align-items:center; gap:11px; padding:6px 8px 18px; }
+  .brand .logo { width:34px; height:34px; border-radius:9px; color:#fff; font-size:16px; font-weight:700;
+    display:grid; place-items:center; background:linear-gradient(135deg,#3d84ff,#2f6bff); box-shadow:0 6px 16px rgba(61,132,255,.35); }
+  .brand b { display:block; font-size:14px; line-height:1.2; }
+  .brand span { display:block; font-size:11px; color:var(--txt-3); margin-top:2px; }
+  .nav { display:flex; flex-direction:column; gap:3px; margin-top:4px; }
+  .nav-item { display:flex; align-items:center; gap:11px; width:100%; text-align:left; background:transparent; border:none;
+    color:var(--txt-2); font-size:13.5px; padding:10px 12px; border-radius:var(--r-sm); position:relative; transition:background .12s, color .12s; }
+  .nav-item .ico { font-size:15px; width:18px; text-align:center; opacity:.9; }
+  .nav-item:hover { background:rgba(255,255,255,.04); color:var(--txt); }
+  .nav-item.active { background:var(--brand-soft); color:#dbe7ff; font-weight:600; }
+  .nav-item.active::before { content:""; position:absolute; left:-14px; top:9px; bottom:9px; width:3px; border-radius:0 3px 3px 0; background:var(--brand); }
+  .side-foot { margin-top:auto; border-top:1px solid var(--line); padding-top:14px; }
+  .side-user { display:flex; align-items:center; gap:8px; font-size:12px; color:var(--txt-2); padding:0 8px 12px; word-break:break-all; }
+  .side-user .dot { flex:0 0 auto; width:7px; height:7px; border-radius:50%; background:var(--green); box-shadow:0 0 0 3px var(--green-soft); }
+  .side-logout { width:100%; background:transparent; border:1px solid var(--line-2); color:var(--txt-2); border-radius:var(--r-sm); padding:9px; font-size:13px; transition:.12s; }
+  .side-logout:hover { border-color:var(--red); color:var(--red); background:var(--red-soft); }
+
+  .content { flex:1; min-width:0; padding:26px 30px 60px; overflow-x:hidden; }
+  .view-head { margin-bottom:20px; }
+  .eyebrow { font-size:11px; letter-spacing:1.5px; text-transform:uppercase; color:var(--txt-3); margin-bottom:6px; }
+  .view-head h1 { font-size:24px; font-weight:650; margin:0; letter-spacing:-.02em; }
+  .view-head .desc { margin:7px 0 0; font-size:13px; color:var(--txt-2); }
+
+  .panel { background:var(--panel); border:1px solid var(--line); border-radius:var(--r); margin-bottom:18px; overflow:hidden; }
+  .panel-head { display:flex; align-items:center; gap:12px; padding:15px 18px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  .panel-title { font-size:14px; font-weight:600; display:flex; align-items:center; gap:9px; }
+  .pill { font-size:11px; font-weight:500; color:#8fb4ff; background:var(--brand-soft); border-radius:20px; padding:3px 9px; }
+  .panel-tools { margin-left:auto; display:flex; gap:9px; align-items:center; flex-wrap:wrap; }
+
+  .search { background:var(--input); border:1px solid var(--line); border-radius:var(--r-sm); padding:8px 12px;
+    font-size:13px; color:var(--txt); width:210px; outline:none; transition:border-color .15s; }
+  .search:focus { border-color:var(--brand); }
+  .search::placeholder { color:var(--txt-3); }
+  .btn-ghost { background:var(--panel-2); border:1px solid var(--line-2); color:var(--txt); border-radius:var(--r-sm); padding:8px 14px; font-size:13px; transition:.12s; }
+  .btn-ghost:hover { border-color:var(--brand); color:#cfe0ff; background:var(--brand-soft); }
+
+  .table-wrap { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:13px 18px; font-size:13px; white-space:nowrap; }
+  thead th { background:var(--panel-2); color:var(--txt-3); font-weight:600; font-size:11.5px; letter-spacing:.4px; border-bottom:1px solid var(--line); }
+  tbody tr { border-bottom:1px solid var(--line); transition:background .1s; }
+  tbody tr:last-child { border-bottom:none; }
+  tbody tr:hover { background:rgba(255,255,255,.025); }
+  .email { font-weight:600; color:var(--txt); }
+  .muted { color:var(--txt-3); font-variant-numeric:tabular-nums; }
+  .note-tag { display:block; width:fit-content; margin-top:5px; max-width:240px; overflow:hidden; text-overflow:ellipsis;
+    white-space:nowrap; font-size:11.5px; font-weight:500; color:#8fb4ff; background:var(--brand-soft);
+    border:1px solid rgba(79,141,255,.28); border-radius:6px; padding:2px 8px; cursor:pointer; transition:.12s; }
+  .note-tag::before { content:"备注 "; color:var(--txt-3); font-weight:400; }
+  .note-tag:hover { border-color:var(--brand); color:#cfe0ff; }
+  .state { text-align:center; color:var(--txt-3); padding:46px 0; font-size:13.5px; }
+
+  .badge { display:inline-block; font-size:11px; padding:2px 9px; border-radius:6px; font-weight:600; }
+  .badge-admin { color:#c3b0ff; background:var(--purple-soft); }
+  .badge-user  { color:var(--txt-2); background:rgba(255,255,255,.06); }
+  .badge-ok    { color:#4bd587; background:var(--green-soft); }
+  .badge-banned{ color:#ff7078; background:var(--red-soft); }
+
+  .row-actions { display:flex; gap:7px; justify-content:flex-end; }
+  .act { background:var(--panel-2); border:1px solid var(--line); color:var(--txt-2); border-radius:6px; padding:5px 11px; font-size:12.5px; white-space:nowrap; transition:.12s; }
+  .act:hover { border-color:var(--brand); color:#cfe0ff; background:var(--brand-soft); }
+  .act.warn:hover  { border-color:var(--amber); color:var(--amber); background:var(--amber-soft); }
+  .act.danger:hover{ border-color:var(--red); color:var(--red); background:var(--red-soft); }
+
+  /* 弹窗 */
+  .mask { position:fixed; inset:0; background:rgba(4,7,13,.66); backdrop-filter:blur(2px); display:grid; place-items:center; z-index:100; animation:fade .15s ease; }
+  .modal { width:400px; max-width:calc(100vw - 32px); background:var(--panel); border:1px solid var(--line-2); border-radius:14px;
+    padding:22px; box-shadow:0 30px 80px rgba(0,0,0,.6); animation:pop .18s cubic-bezier(.23,1,.32,1); }
+  .modal h3 { margin:0 0 6px; font-size:16px; }
+  .modal .sub { margin:0 0 16px; font-size:13px; color:var(--txt-2); line-height:1.6; }
+  .modal .sub b { color:var(--txt); }
+  .modal label { display:block; font-size:12px; color:var(--txt-2); margin:10px 0 6px; }
+  .modal input { width:100%; background:var(--input); border:1px solid var(--line); border-radius:var(--r-sm); padding:10px 12px; font-size:14px; color:var(--txt); outline:none; }
+  .modal input:focus { border-color:var(--brand); }
+  .modal-actions { display:flex; justify-content:flex-end; gap:10px; margin-top:20px; flex-wrap:wrap; }
+  .modal-actions button { border:none; border-radius:var(--r-sm); padding:9px 18px; font-size:13px; transition:.12s; }
+  .m-cancel { background:var(--panel-2); border:1px solid var(--line-2); color:var(--txt-2); }
+  .m-cancel:hover { color:var(--txt); border-color:var(--txt-3); }
+  .m-ok { background:var(--brand); color:#fff; }
+  .m-ok:hover { filter:brightness(1.08); }
+  .m-ok.danger { background:var(--red); }
+  .m-ok:disabled { opacity:.6; cursor:default; }
+
+  /* toast */
+  .toast-viewport { position:fixed; right:20px; bottom:20px; z-index:3000; display:flex; flex-direction:column; align-items:flex-end; gap:10px; pointer-events:none; }
+  .toast { pointer-events:auto; display:flex; align-items:center; gap:10px; min-width:200px; max-width:380px; padding:12px 16px; border-radius:10px;
+    background:#1c2330; border:1px solid var(--line-2); color:var(--txt); font-size:13.5px; line-height:1.5; box-shadow:0 14px 36px rgba(0,0,0,.5); cursor:pointer; animation:toast-in .22s cubic-bezier(.22,1,.36,1); }
+  .toast.leaving { animation:toast-out .2s ease forwards; }
+  .toast-ico { flex:0 0 auto; width:20px; height:20px; border-radius:50%; color:#fff; display:grid; place-items:center; font-size:12px; font-weight:700; }
+  .toast-success .toast-ico { background:var(--green); }
+  .toast-error   .toast-ico { background:var(--red); }
+  .toast-info    .toast-ico { background:var(--brand); font-style:italic; }
+  @keyframes fade { from{opacity:0} to{opacity:1} }
+  @keyframes pop { from{opacity:0;transform:scale(.96)} to{opacity:1;transform:none} }
+  @keyframes toast-in { from{opacity:0;transform:translateX(16px) translateY(6px);} to{opacity:1;transform:none;} }
+  @keyframes toast-out { from{opacity:1;transform:none;} to{opacity:0;transform:translateX(16px);} }
+
+  @media (max-width:760px) { .sidebar { display:none; } .content { padding:20px 16px 48px; } }
+</style>
+</head>
+<body>
+
+<!-- 登录 -->
+<div id="loginView" class="login-wrap">
+  <form id="loginForm" class="login-card" autocomplete="off">
+    <div class="brand-hero">
+      <div class="logo">蓝</div>
+      <h1>代理后台</h1>
+      <p>蓝盾翻译器 · 用你的账号邮箱 + 密码登录</p>
+    </div>
+    <div class="field">
+      <label>邮箱</label>
+      <input id="loginEmail" type="email" placeholder="you@example.com" autofocus />
+    </div>
+    <div class="field">
+      <label>密码</label>
+      <input id="loginPassword" type="password" placeholder="登录密码" />
+    </div>
+    <button id="loginBtn" class="btn-primary" type="submit">登 录</button>
+  </form>
+</div>
+
+<!-- 后台 -->
+<div id="adminView" class="app hidden">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="logo">蓝</div>
+      <div><b>蓝盾翻译器</b><span>代理后台</span></div>
+    </div>
+    <nav class="nav">
+      <button id="navUsers" class="nav-item active"><span class="ico">👥</span>用户管理</button>
+      <button id="navOrders" class="nav-item"><span class="ico">🧾</span>我的续费订单</button>
+    </nav>
+    <div class="side-foot">
+      <div class="side-user"><span class="dot"></span><span id="whoEmail"></span></div>
+      <button id="logoutBtn" class="side-logout">退出登录</button>
+    </div>
+  </aside>
+
+  <main class="content">
+    <!-- 用户管理 -->
+    <section id="usersView" class="view">
+      <div class="view-head">
+        <div class="eyebrow">代理控制台</div>
+        <h1>用户管理</h1>
+        <p class="desc">给用户加备注、封禁/解封、查看会员到期,并按主管理设定的价格生成包月续费订单。</p>
+      </div>
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">用户列表 <span id="countPill" class="pill">0 个用户</span></div>
+          <div class="panel-tools">
+            <input id="searchInput" class="search" type="text" placeholder="搜索邮箱 / 备注…" />
+            <button id="refreshBtn" class="btn-ghost">刷新</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>邮箱</th>
+                <th>状态</th>
+                <th>会员到期(西雅图)</th>
+                <th>注册时间</th>
+                <th style="text-align:right;">操作</th>
+              </tr>
+            </thead>
+            <tbody id="userRows"></tbody>
+          </table>
+          <div id="tableState" class="state">加载中…</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 我的续费订单 -->
+    <section id="ordersView" class="view hidden">
+      <div class="view-head">
+        <div class="eyebrow">代理控制台</div>
+        <h1>我的续费订单</h1>
+        <p class="desc">你为用户生成的包月续费订单。把二维码截图发给用户,到账后系统自动发放会员时间。</p>
+      </div>
+      <div class="panel">
+        <div class="panel-head">
+          <div class="panel-title">订单列表 <span id="orderCountPill" class="pill">—</span></div>
+          <div class="panel-tools">
+            <span id="orderAutoHint" class="muted" style="font-size:12px;">● 自动检测到账中</span>
+            <button id="orderRefreshBtn" class="btn-ghost">刷新</button>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>目标用户</th>
+                <th>时长</th>
+                <th>应付金额</th>
+                <th>状态</th>
+                <th>创建时间</th>
+                <th style="text-align:right;">操作</th>
+              </tr>
+            </thead>
+            <tbody id="orderRows"></tbody>
+          </table>
+          <div id="orderState" class="state">加载中…</div>
+        </div>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div id="modalRoot"></div>
+<div id="toastViewport" class="toast-viewport"></div>
+
+<script>
+// ============================================================
+// 配置(可公开的 URL + publishable key,与主管理后台一致)。机密只在边缘函数里。
+// ============================================================
+const SUPABASE_URL = 'https://bicztczzmbudssstwuiv.supabase.co';
+const PUBLISHABLE_KEY = 'sb_publishable_ckgXNQN98ZM_xw-KR0EzHw__HX_5HXg';
+const FN_URL = SUPABASE_URL + '/functions/v1/admin';
+const PAY_FN_URL = SUPABASE_URL + '/functions/v1/pay';
+const TOKEN_URL = SUPABASE_URL + '/auth/v1/token?grant_type=password';
+
+let accessToken = null;
+let callerId = null;
+let allUsers = [];
+let serverNow = null;
+let pricing = {};          // 本次级管理员的包月价目表 { "天数": 价格 }
+let payQrUrl = '';         // 未使用(次级管理员不读收款设置);二维码由订单地址自动生成
+
+// ---------------- toast ----------------
+const ICONS = { success:'✓', error:'✕', info:'i' };
+function toast(text, type = 'info') {
+  const vp = document.getElementById('toastViewport');
+  const el = document.createElement('div');
+  el.className = 'toast toast-' + type;
+  const ico = document.createElement('span'); ico.className = 'toast-ico'; ico.textContent = ICONS[type] || 'i';
+  const txt = document.createElement('span'); txt.className = 'toast-text'; txt.textContent = text;
+  el.append(ico, txt);
+  const kill = () => { if (el.classList.contains('leaving')) return; el.classList.add('leaving'); setTimeout(() => el.remove(), 200); };
+  el.addEventListener('click', kill);
+  vp.appendChild(el);
+  setTimeout(kill, 3500);
+}
+
+// ---------------- 会话复位 ----------------
+function resetToLogin() {
+  accessToken = null; callerId = null; allUsers = []; pricing = {};
+  stopOrderPolling();
+  document.getElementById('modalRoot').innerHTML = '';
+  document.getElementById('adminView').classList.add('hidden');
+  document.getElementById('loginView').classList.remove('hidden');
+}
+
+// ---------------- fetch 封装 ----------------
+async function readError(res) {
+  try {
+    const b = await res.json();
+    return b.error || b.error_description || b.msg || b.message || ('请求失败 (' + res.status + ')');
+  } catch { return '请求失败 (' + res.status + ')'; }
+}
+async function callAdmin(body) {
+  const res = await fetch(FN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'apikey': PUBLISHABLE_KEY, 'Authorization': 'Bearer ' + accessToken },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 401 && !document.getElementById('adminView').classList.contains('hidden')) { resetToLogin(); throw new Error('登录已过期,请重新登录'); }
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json();
+}
+async function callPay(body) {
+  const res = await fetch(PAY_FN_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'apikey': PUBLISHABLE_KEY, 'Authorization': 'Bearer ' + accessToken },
+    body: JSON.stringify(body),
+  });
+  if (res.status === 401 && !document.getElementById('adminView').classList.contains('hidden')) { resetToLogin(); throw new Error('登录已过期,请重新登录'); }
+  if (!res.ok) throw new Error(await readError(res));
+  return res.json();
+}
+
+// ---------------- 登录 ----------------
+async function doLogin(email, password) {
+  const res = await fetch(TOKEN_URL, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', 'apikey': PUBLISHABLE_KEY },
+    body: JSON.stringify({ email, password }),
+  });
+  if (!res.ok) {
+    const msg = await readError(res);
+    if (/invalid login credentials/i.test(msg)) throw new Error('邮箱或密码错误');
+    if (/email not confirmed/i.test(msg)) throw new Error('邮箱尚未验证');
+    throw new Error(msg);
+  }
+  const data = await res.json();
+  return data.access_token;
+}
+
+document.getElementById('loginForm').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const btn = document.getElementById('loginBtn');
+  if (!email || !password) return toast('请输入邮箱和密码', 'error');
+  btn.disabled = true; btn.textContent = '登录中…';
+  try {
+    accessToken = await doLogin(email, password);
+    const data = await callAdmin({ action: 'list' });
+    if (data.role !== 'subadmin') {
+      accessToken = null;
+      throw new Error('此账号不是代理,无法登录本后台');
+    }
+    callerId = data.callerId;
+    serverNow = data.server_now;
+    pricing = data.pricing || {};
+    onLoginSuccess(email, data.users);
+  } catch (err) {
+    accessToken = null;
+    toast(err.message || '登录失败', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = '登 录';
+  }
+});
+
+function onLoginSuccess(email, users) {
+  document.getElementById('loginView').classList.add('hidden');
+  document.getElementById('adminView').classList.remove('hidden');
+  document.getElementById('whoEmail').textContent = email;
+  document.getElementById('loginPassword').value = '';
+  renderUsers(users);
+  switchView('users');
+}
+document.getElementById('logoutBtn').addEventListener('click', resetToLogin);
+
+// ---------------- 视图切换 ----------------
+function switchView(which) {
+  const views = { users: 'usersView', orders: 'ordersView' };
+  const navs  = { users: 'navUsers',  orders: 'navOrders' };
+  Object.keys(views).forEach((k) => {
+    document.getElementById(views[k]).classList.toggle('hidden', k !== which);
+    document.getElementById(navs[k]).classList.toggle('active', k === which);
+  });
+  if (which === 'orders') enterOrdersView();
+  else stopOrderPolling();
+}
+document.getElementById('navUsers').addEventListener('click', () => switchView('users'));
+document.getElementById('navOrders').addEventListener('click', () => switchView('orders'));
+
+// ---------------- 拉取 / 渲染用户 ----------------
+async function refresh() {
+  const stateEl = document.getElementById('tableState');
+  stateEl.textContent = '加载中…'; stateEl.classList.remove('hidden');
+  try {
+    const data = await callAdmin({ action: 'list' });
+    callerId = data.callerId; serverNow = data.server_now; pricing = data.pricing || pricing;
+    renderUsers(data.users);
+  } catch (err) {
+    document.getElementById('userRows').textContent = '';
+    stateEl.textContent = '加载失败:' + (err.message || ''); stateEl.classList.remove('hidden');
+    toast(err.message || '加载失败', 'error');
+  }
+}
+document.getElementById('refreshBtn').addEventListener('click', refresh);
+document.getElementById('searchInput').addEventListener('input', () => paint());
+
+function renderUsers(users) { allUsers = users || []; paint(); }
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso); if (isNaN(d.getTime())) return '—';
+  const p = (n) => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth()+1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+function fmtSeattle(iso) {
+  if (!iso) return '—';
+  const d = new Date(iso); if (isNaN(d.getTime())) return '—';
+  try {
+    return new Intl.DateTimeFormat('zh-CN', { timeZone: 'America/Los_Angeles', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }).format(d);
+  } catch { return fmtDate(iso); }
+}
+function membershipView(u) {
+  const exp = u.membership_expires_at;
+  if (!exp) return { label: '未开通', cls: 'badge-user', exp: null };
+  const expMs = new Date(exp).getTime();
+  const nowMs = serverNow ? new Date(serverNow).getTime() : Date.now();
+  if (isNaN(expMs)) return { label: '未开通', cls: 'badge-user', exp: null };
+  if (expMs > nowMs) {
+    const diff = expMs - nowMs;
+    const days = Math.floor(diff / 86400000);
+    const hours = Math.floor((diff % 86400000) / 3600000);
+    return { label: '有效', cls: 'badge-ok', exp, remain: days + ' 天 ' + hours + ' 时' };
+  }
+  return { label: '已过期', cls: 'badge-banned', exp };
+}
+
+function paint() {
+  const q = document.getElementById('searchInput').value.trim().toLowerCase();
+  const rows = document.getElementById('userRows');
+  const stateEl = document.getElementById('tableState');
+  rows.textContent = '';
+  const list = q
+    ? allUsers.filter(u => (u.email || '').toLowerCase().includes(q) || (u.note || '').toLowerCase().includes(q))
+    : allUsers;
+  document.getElementById('countPill').textContent = q ? (list.length + ' / ' + allUsers.length + ' 个用户') : (allUsers.length + ' 个用户');
+  if (allUsers.length === 0) { stateEl.textContent = '还没有分配给你的用户,请联系主管理分配'; stateEl.classList.remove('hidden'); return; }
+  if (list.length === 0) { stateEl.textContent = '没有匹配「' + q + '」的用户'; stateEl.classList.remove('hidden'); return; }
+  stateEl.classList.add('hidden');
+  for (const u of list) rows.appendChild(buildRow(u));
+}
+
+function buildRow(u) {
+  const tr = document.createElement('tr');
+  const tdEmail = document.createElement('td');
+  const em = document.createElement('span'); em.className = 'email'; em.textContent = u.email || '(无邮箱)';
+  tdEmail.appendChild(em);
+  if (u.note) {
+    const nt = document.createElement('div');
+    nt.className = 'note-tag'; nt.textContent = u.note; nt.title = u.note + '(点击编辑备注)';
+    nt.addEventListener('click', () => openNoteModal(u));
+    tdEmail.appendChild(nt);
+  }
+  const tdStatus = document.createElement('td');
+  tdStatus.appendChild(badge(u.is_banned ? '已封禁' : '正常', u.is_banned ? 'badge-banned' : 'badge-ok'));
+
+  const tdMember = document.createElement('td');
+  const mv = membershipView(u);
+  tdMember.appendChild(badge(mv.label, mv.cls));
+  if (mv.exp) {
+    const d = document.createElement('div'); d.className = 'muted'; d.style.marginTop = '3px'; d.style.fontSize = '11px';
+    d.textContent = (mv.remain ? '剩 ' + mv.remain + ' · ' : '') + fmtSeattle(mv.exp);
+    tdMember.appendChild(d);
+  }
+
+  const tdCreated = document.createElement('td'); tdCreated.className = 'muted'; tdCreated.textContent = fmtDate(u.created_at);
+
+  const tdAct = document.createElement('td');
+  const wrap = document.createElement('div'); wrap.className = 'row-actions';
+  wrap.appendChild(actionBtn('备注', '', () => openNoteModal(u)));
+  wrap.appendChild(actionBtn('续费', '', () => openRenewModal(u)));
+  wrap.appendChild(u.is_banned
+    ? actionBtn('解封', '', () => confirmAction('unban', u))
+    : actionBtn('封禁', 'warn', () => confirmAction('ban', u)));
+  tdAct.appendChild(wrap);
+
+  tr.append(tdEmail, tdStatus, tdMember, tdCreated, tdAct);
+  return tr;
+}
+
+function badge(text, cls) { const s = document.createElement('span'); s.className = 'badge ' + cls; s.textContent = text; return s; }
+function actionBtn(text, extra, onClick) { const b = document.createElement('button'); b.className = 'act' + (extra ? ' ' + extra : ''); b.textContent = text; b.addEventListener('click', onClick); return b; }
+function bold(t){ const b=document.createElement('b'); b.textContent=t; return b; }
+function label(t){ const l=document.createElement('label'); l.textContent=t; return l; }
+function mbtn(t,cls){ const b=document.createElement('button'); b.className=cls; b.textContent=t; return b; }
+function fmtNum(n){ return (Number(n) || 0).toLocaleString('en-US'); }
+function escapeHtml(s){ return String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c])); }
+function copyText(t){ navigator.clipboard.writeText(String(t)).then(() => toast('已复制','success'), () => toast('复制失败,请手动复制','error')); }
+function qrSrc(addr){ return addr ? ('https://api.qrserver.com/v1/create-qr-code/?size=300x300&margin=0&data=' + encodeURIComponent(addr)) : ''; }
+
+const TIER_LABEL = { 30: '1 个月 · 30 天', 90: '3 个月 · 90 天', 180: '6 个月 · 180 天', 365: '12 个月 · 365 天' };
+
+// ---------------- 弹窗:备注 ----------------
+function openNoteModal(u) {
+  const root = document.getElementById('modalRoot'); root.innerHTML = '';
+  const mask = document.createElement('div'); mask.className = 'mask';
+  const modal = document.createElement('div'); modal.className = 'modal';
+  const h = document.createElement('h3'); h.textContent = '用户备注';
+  const sub = document.createElement('p'); sub.className = 'sub';
+  sub.append('给 ', bold(u.email), ' 设置一个自定义备注名(仅后台可见,用户看不到)。留空并保存即可清除。');
+  const l1 = label('备注(最多 100 字)');
+  const i1 = document.createElement('input'); i1.type = 'text'; i1.maxLength = 100; i1.value = u.note || '';
+  i1.placeholder = '如:张三 / 深圳客户 / 已付款待续费';
+  const actions = document.createElement('div'); actions.className = 'modal-actions';
+  const cancel = mbtn('取消', 'm-cancel'); const ok = mbtn('保存', 'm-ok');
+  const close = () => root.innerHTML = '';
+  cancel.addEventListener('click', close);
+  mask.addEventListener('mousedown', (e) => { if (e.target === mask) close(); });
+  let saving = false;
+  async function save() {
+    if (saving) return; saving = true; ok.disabled = true; ok.textContent = '保存中…';
+    try {
+      const r = await callAdmin({ action: 'setNote', userId: u.id, note: i1.value.trim() });
+      close(); toast(r.message || '已保存', 'success'); await refresh();
+    } catch (err) { toast(err.message || '保存失败', 'error'); saving = false; ok.disabled = false; ok.textContent = '保存'; }
+  }
+  ok.addEventListener('click', save);
+  i1.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); save(); } });
+  actions.append(cancel, ok); modal.append(h, sub, l1, i1, actions);
+  mask.appendChild(modal); root.appendChild(mask); i1.focus(); i1.select();
+}
+
+// ---------------- 弹窗:封禁 / 解封 确认 ----------------
+const CONFIRM_META = {
+  ban:   { title:'封禁账户', ok:'确认封禁', text:(e)=>['封禁后 ', e, ' 将无法再登录(已在线的会话最长约 1 小时后失效),数据保留,可随时解封。'] },
+  unban: { title:'解封账户', ok:'确认解封', text:(e)=>['解封后 ', e, ' 可重新正常登录。'] },
+};
+function confirmAction(action, u) {
+  const meta = CONFIRM_META[action];
+  const root = document.getElementById('modalRoot'); root.innerHTML = '';
+  const mask = document.createElement('div'); mask.className = 'mask';
+  const modal = document.createElement('div'); modal.className = 'modal';
+  const h = document.createElement('h3'); h.textContent = meta.title;
+  const sub = document.createElement('p'); sub.className = 'sub';
+  meta.text(bold(u.email)).forEach(p => sub.append(p));
+  const actions = document.createElement('div'); actions.className = 'modal-actions';
+  const cancel = mbtn('取消', 'm-cancel'); const ok = mbtn(meta.ok, 'm-ok');
+  const close = () => root.innerHTML = '';
+  cancel.addEventListener('click', close);
+  mask.addEventListener('mousedown', (e) => { if (e.target === mask) close(); });
+  ok.addEventListener('click', async () => {
+    ok.disabled = true; ok.textContent = '处理中…';
+    try { const r = await callAdmin({ action, userId: u.id }); close(); toast(r.message || '操作成功', 'success'); await refresh(); }
+    catch (err) { toast(err.message || '操作失败', 'error'); ok.disabled = false; ok.textContent = meta.ok; }
+  });
+  actions.append(cancel, ok); modal.append(h, sub, actions); mask.appendChild(modal); root.appendChild(mask);
+}
+
+// ---------------- 弹窗:续费(包月;价格由主管理设定,不可自改)----------------
+function openRenewModal(u) {
+  const tiers = [30, 90, 180, 365].filter((d) => Number(pricing[String(d)]) > 0);
+  if (!tiers.length) return toast('主管理尚未为你设定任何包月价格,请联系主管理', 'error');
+
+  const root = document.getElementById('modalRoot'); root.innerHTML = '';
+  const mask = document.createElement('div'); mask.className = 'mask';
+  const modal = document.createElement('div'); modal.className = 'modal'; modal.style.width = '420px';
+  const close = () => root.innerHTML = '';
+  mask.addEventListener('mousedown', (e) => { if (e.target === mask) close(); });
+
+  const h = document.createElement('h3'); h.textContent = '续费 · 生成包月付款订单';
+  const sub = document.createElement('p'); sub.className = 'sub';
+  sub.append('为 ', bold(u.email), ' 生成 USDT 收款订单;价格由主管理设定,不可修改。把付款二维码截图发给用户,到账后自动发放会员时间。');
+
+  let picked = tiers[0];
+  const tierLbl = label('选择套餐(价格已固定)');
+  const tierWrap = document.createElement('div'); tierWrap.style.cssText = 'display:flex;flex-direction:column;gap:8px;margin:2px 0 4px;';
+  const btns = {};
+  tiers.forEach((d) => {
+    const price = Number(pricing[String(d)]);
+    const b = document.createElement('button');
+    b.className = d === picked ? 'm-ok' : 'm-cancel';
+    b.style.cssText = 'display:flex;justify-content:space-between;align-items:center;padding:11px 14px;border:none;border-radius:var(--r-sm);font-size:13.5px;';
+    b.innerHTML = '<span>' + TIER_LABEL[d] + '</span><b>' + price + ' USDT</b>';
+    b.addEventListener('click', () => { picked = d; Object.keys(btns).forEach((k) => btns[k].className = (Number(k) === picked ? 'm-ok' : 'm-cancel')); });
+    btns[d] = b; tierWrap.appendChild(b);
+  });
+
+  const actions = document.createElement('div'); actions.className = 'modal-actions';
+  const cancel = mbtn('取消', 'm-cancel'); const ok = mbtn('生成付款订单', 'm-ok');
+  cancel.addEventListener('click', close);
+  ok.addEventListener('click', async () => {
+    ok.disabled = true; ok.textContent = '生成中…';
+    try {
+      const r = await callPay({ action: 'createOrder', userId: u.id, targetEmail: u.email, kind: 'time', quantity: picked });
+      close(); openPayModal(r.order);
+      if (!document.getElementById('ordersView').classList.contains('hidden')) loadOrders();
+    } catch (err) { toast(err.message || '创建失败', 'error'); ok.disabled = false; ok.textContent = '生成付款订单'; }
+  });
+  actions.append(cancel, ok);
+  modal.append(h, sub, tierLbl, tierWrap, actions);
+  mask.appendChild(modal); root.appendChild(mask);
+}
+
+// ---------------- 付款界面弹窗(截图发给用户)+ 到账轮询 ----------------
+let payModalPoll = null;
+function clearPayModalPoll(){ if (payModalPoll) { clearInterval(payModalPoll); payModalPoll = null; } }
+function kindText(o){ return o.kind === 'chars' ? '字符 ' + fmtNum(o.quantity) : '包月 ' + o.quantity + ' 天'; }
+
+function openPayModal(order) {
+  clearPayModalPoll();
+  const root = document.getElementById('modalRoot'); root.innerHTML = '';
+  const mask = document.createElement('div'); mask.className = 'mask';
+  const modal = document.createElement('div'); modal.className = 'modal'; modal.style.width = '440px';
+  const src = qrSrc(order.pay_address);
+  const amount = Number(order.usdt_amount).toFixed(3);
+  modal.innerHTML =
+    '<h3>付款界面 · 截图发给用户</h3>' +
+    '<p class="sub">目标 <b>' + escapeHtml(order.target_email || order.user_id) + '</b> · ' + escapeHtml(kindText(order)) + '</p>' +
+    '<div style="text-align:center;margin:6px 0 14px;"><div style="background:#fff;border-radius:12px;padding:10px;display:inline-block;">' +
+      '<img src="' + src + '" alt="二维码" width="200" height="200" style="display:block;" onerror="this.style.opacity=.15"/></div></div>' +
+    '<div style="background:var(--input);border:1px solid var(--line);border-radius:var(--r-sm);padding:10px 12px;margin-bottom:10px;">' +
+      '<div class="muted" style="font-size:11px;margin-bottom:4px;">USDT-TRC20 收款地址</div>' +
+      '<div style="font-family:ui-monospace,Consolas,monospace;font-size:12.5px;word-break:break-all;">' + escapeHtml(order.pay_address) + '</div></div>' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;background:var(--red-soft);border:1px solid var(--red);border-radius:var(--r-sm);padding:12px 14px;margin-bottom:12px;">' +
+      '<span style="font-size:13px;color:var(--txt-2);">应付金额(须完全一致)</span>' +
+      '<span style="font-size:20px;font-weight:700;color:#ff8a90;font-variant-numeric:tabular-nums;">' + amount + ' USDT</span></div>' +
+    '<div style="display:flex;justify-content:space-between;align-items:center;font-size:13px;">' +
+      '<span class="muted">订单状态(自动检测)</span><span id="payModalStatus" class="badge badge-user">待支付…</span></div>';
+  const actions = document.createElement('div'); actions.className = 'modal-actions';
+  const copyAddr = mbtn('复制地址', 'm-cancel'); const copyAmt = mbtn('复制金额', 'm-cancel'); const closeBtn = mbtn('关闭', 'm-ok');
+  copyAddr.addEventListener('click', () => copyText(order.pay_address));
+  copyAmt.addEventListener('click', () => copyText(amount));
+  const close = () => { clearPayModalPoll(); root.innerHTML = ''; };
+  closeBtn.addEventListener('click', close);
+  mask.addEventListener('mousedown', (e) => { if (e.target === mask) close(); });
+  actions.append(copyAddr, copyAmt, closeBtn); modal.appendChild(actions);
+  mask.appendChild(modal); root.appendChild(mask);
+
+  const poll = async () => {
+    try {
+      const r = await callPay({ action: 'checkOrder', orderId: order.id });
+      const st = document.getElementById('payModalStatus');
+      if (r.status === 'paid') { if (st) { st.className = 'badge badge-ok'; st.textContent = '已到账 · 已发放'; } clearPayModalPoll(); toast('订单已到账,已自动发放', 'success'); loadOrders(); }
+      else if (r.status === 'cancelled' || r.status === 'expired') { if (st) { st.className = 'badge badge-banned'; st.textContent = r.status === 'expired' ? '已过期' : '已取消'; } clearPayModalPoll(); }
+    } catch (_e) { /* 静默 */ }
+  };
+  payModalPoll = setInterval(poll, 6000);
+}
+
+// ---------------- 我的续费订单 ----------------
+let orderPollTimer = null;
+let myOrders = [];
+const ORDER_STATUS = {
+  pending:   { t: '待支付', c: 'badge-user' },
+  paid:      { t: '已到账', c: 'badge-ok' },
+  cancelled: { t: '已取消', c: 'badge-user' },
+  expired:   { t: '已过期', c: 'badge-banned' },
+};
+document.getElementById('orderRefreshBtn').addEventListener('click', () => loadOrders());
+
+async function enterOrdersView() { await loadOrders(); startOrderPolling(); }
+
+async function loadOrders() {
+  const stateEl = document.getElementById('orderState');
+  try {
+    const r = await callPay({ action: 'listOrders' });
+    myOrders = r.orders || [];
+    renderOrders(myOrders);
+  } catch (err) {
+    document.getElementById('orderRows').textContent = '';
+    stateEl.textContent = '加载失败:' + (err.message || ''); stateEl.classList.remove('hidden');
+  }
+}
+
+function renderOrders(orders) {
+  document.getElementById('orderCountPill').textContent = orders.length + ' 单';
+  const rows = document.getElementById('orderRows');
+  const stateEl = document.getElementById('orderState');
+  rows.textContent = '';
+  if (!orders.length) { stateEl.textContent = '还没有订单,去「用户管理」点某个用户的「续费」生成'; stateEl.classList.remove('hidden'); return; }
+  stateEl.classList.add('hidden');
+  for (const o of orders) {
+    const tr = document.createElement('tr');
+    const tdUser = document.createElement('td');
+    const em = document.createElement('span'); em.className = 'email'; em.textContent = o.target_email || '(无邮箱)'; tdUser.appendChild(em);
+    const tdQty = document.createElement('td'); tdQty.className = 'muted'; tdQty.textContent = o.quantity + ' 天';
+    const tdAmt = document.createElement('td'); tdAmt.style.fontVariantNumeric = 'tabular-nums'; tdAmt.textContent = Number(o.usdt_amount).toFixed(3) + ' U';
+    const tdStatus = document.createElement('td');
+    const st = ORDER_STATUS[o.status] || { t: o.status, c: 'badge-user' };
+    tdStatus.appendChild(badge(st.t, st.c));
+    const tdTime = document.createElement('td'); tdTime.className = 'muted'; tdTime.textContent = fmtDate(o.created_at);
+    const tdAct = document.createElement('td');
+    const wrap = document.createElement('div'); wrap.className = 'row-actions';
+    if (o.status === 'pending') {
+      wrap.appendChild(actionBtn('二维码', '', () => openPayModal(o)));
+      wrap.appendChild(actionBtn('检测', '', () => checkOneOrder(o)));
+      wrap.appendChild(actionBtn('取消', 'warn', () => cancelOrder(o)));
+    } else if (o.status === 'paid' && o.tx_hash) {
+      wrap.appendChild(actionBtn('查交易', '', () => window.open('https://tronscan.org/#/transaction/' + o.tx_hash, '_blank', 'noopener')));
+    }
+    tdAct.appendChild(wrap);
+    tr.append(tdUser, tdQty, tdAmt, tdStatus, tdTime, tdAct);
+    rows.appendChild(tr);
+  }
+}
+
+async function checkOneOrder(o) {
+  try {
+    const r = await callPay({ action: 'checkOrder', orderId: o.id });
+    if (r.status === 'paid') toast('已到账,已自动发放', 'success');
+    else if (r.status === 'pending') toast('尚未检测到到账,请稍候', 'info');
+    else toast('订单' + (ORDER_STATUS[r.status] ? ORDER_STATUS[r.status].t : r.status), 'info');
+    await loadOrders();
+  } catch (err) { toast(err.message || '检测失败', 'error'); }
+}
+
+function cancelOrder(o) {
+  const root = document.getElementById('modalRoot'); root.innerHTML = '';
+  const mask = document.createElement('div'); mask.className = 'mask';
+  const modal = document.createElement('div'); modal.className = 'modal';
+  const h = document.createElement('h3'); h.textContent = '取消订单';
+  const sub = document.createElement('p'); sub.className = 'sub';
+  sub.append('取消 ', bold(o.target_email || o.user_id), ' 的「包月 ' + o.quantity + ' 天」订单(应付 ' + Number(o.usdt_amount).toFixed(3) + ' USDT)?用户已付款请勿取消。');
+  const actions = document.createElement('div'); actions.className = 'modal-actions';
+  const cancel = mbtn('返回', 'm-cancel'); const ok = mbtn('确认取消', 'm-ok danger');
+  const close = () => root.innerHTML = '';
+  cancel.addEventListener('click', close);
+  mask.addEventListener('mousedown', (e) => { if (e.target === mask) close(); });
+  ok.addEventListener('click', async () => {
+    ok.disabled = true; ok.textContent = '处理中…';
+    try { const r = await callPay({ action: 'cancelOrder', orderId: o.id }); close(); toast(r.message || '已取消', 'success'); await loadOrders(); }
+    catch (err) { toast(err.message || '取消失败', 'error'); ok.disabled = false; ok.textContent = '确认取消'; }
+  });
+  actions.append(cancel, ok); modal.append(h, sub, actions); mask.appendChild(modal); root.appendChild(mask);
+}
+
+// 每 15s:触发服务端 scan 巡检到账 + 刷新(仅在订单页可见时)
+function startOrderPolling() {
+  stopOrderPolling();
+  orderPollTimer = setInterval(async () => {
+    if (!accessToken) { stopOrderPolling(); return; }
+    try { await callPay({ action: 'scan', source: 'poll' }); } catch (_e) { /* 静默 */ }
+    if (!document.getElementById('ordersView').classList.contains('hidden')) await loadOrders();
+  }, 15000);
+}
+function stopOrderPolling() { if (orderPollTimer) { clearInterval(orderPollTimer); orderPollTimer = null; } }
+</script>
+</body>
+</html>
