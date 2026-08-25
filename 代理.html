@@ -197,7 +197,6 @@
       <div class="view-head">
         <div class="eyebrow">代理控制台</div>
         <h1>用户管理</h1>
-        <p class="desc">给用户加备注、封禁/解封、查看会员到期,并按主管理设定的价格生成包月续费订单。</p>
       </div>
       <div class="panel">
         <div class="panel-head">
@@ -455,7 +454,7 @@ function paint() {
     ? allUsers.filter(u => (u.email || '').toLowerCase().includes(q) || (u.note || '').toLowerCase().includes(q))
     : allUsers;
   document.getElementById('countPill').textContent = q ? (list.length + ' / ' + allUsers.length + ' 个用户') : (allUsers.length + ' 个用户');
-  if (allUsers.length === 0) { stateEl.textContent = '还没有分配给你的用户,请联系主管理分配'; stateEl.classList.remove('hidden'); return; }
+  if (allUsers.length === 0) { stateEl.textContent = ''; stateEl.classList.add('hidden'); return; }
   if (list.length === 0) { stateEl.textContent = '没有匹配「' + q + '」的用户'; stateEl.classList.remove('hidden'); return; }
   stateEl.classList.add('hidden');
   for (const u of list) rows.appendChild(buildRow(u));
