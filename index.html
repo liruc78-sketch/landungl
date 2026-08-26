@@ -4,6 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>蓝盾翻译器 · 代理后台</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <style>
   /* ===== 蓝盾控制台 · 暗色(与主管理后台同一套设计语言)===== */
   :root {
@@ -271,14 +272,17 @@ const SUPABASE_URL = 'https://bicztczzmbudssstwuiv.supabase.co';
 const PUBLISHABLE_KEY = 'sb_publishable_ckgXNQN98ZM_xw-KR0EzHw__HX_5HXg';
 const FN_URL = SUPABASE_URL + '/functions/v1/admin';
 const PAY_FN_URL = SUPABASE_URL + '/functions/v1/pay';
-const TOKEN_URL = SUPABASE_URL + '/auth/v1/token?grant_type=password';
 
-// 会话:持久化到 localStorage + 用 refresh_token 自动续期,避免「登录过期需要重新登录」。
-const SESSION_KEY = 'bd_agent_session';
-let accessToken = null;
-let refreshToken = null;
-let expiresAt = 0;         // access_token 到期的毫秒时间戳
-let currentEmail = '';     // 当前登录邮箱(恢复会话时显示用)
+// 用官方 supabase-js 客户端管理会话:自动持久化到 localStorage + 自动续期 token,
+// 刷新/重开浏览器都保持登录(与主管理后台、本德筛号中心同款做法)。
+const sb = supabase.createClient(SUPABASE_URL, PUBLISHABLE_KEY, {
+  auth: { persistSession: true, autoRefreshToken: true, storageKey: 'bd_agent_auth' },
+});
+async function getToken() {
+  const { data } = await sb.auth.getSession();
+  return data?.session?.access_token || null;
+}
+let currentEmail = '';     // 当前登录邮箱(显示用)
 let callerId = null;
 let allUsers = [];
 let serverNow = null;
@@ -300,64 +304,17 @@ function toast(text, type = 'info') {
   setTimeout(kill, 3500);
 }
 
-// ---------------- 会话复位 ----------------
-function resetToLogin() {
-  accessToken = null; refreshToken = null; expiresAt = 0; callerId = null; allUsers = []; pricing = {};
-  clearSession();
+// ---------------- 会话复位:登出并回到登录页 ----------------
+function showLogin() {
+  callerId = null; allUsers = []; pricing = {};
   stopOrderPolling();
   document.getElementById('modalRoot').innerHTML = '';
   document.getElementById('adminView').classList.add('hidden');
   document.getElementById('loginView').classList.remove('hidden');
 }
-
-// ---------------- 会话持久化 + 自动续期 ----------------
-function saveSession() {
-  try {
-    if (accessToken && refreshToken) {
-      localStorage.setItem(SESSION_KEY, JSON.stringify({
-        access_token: accessToken, refresh_token: refreshToken, expires_at: expiresAt, email: currentEmail,
-      }));
-    }
-  } catch (_e) { /* localStorage 不可用则退化为内存会话 */ }
-}
-function clearSession() {
-  try { localStorage.removeItem(SESSION_KEY); } catch (_e) { /* ignore */ }
-}
-// 把 token 响应写进会话状态(password / refresh_token 两种授权都用它)
-function applyToken(data) {
-  accessToken = data.access_token || null;
-  if (data.refresh_token) refreshToken = data.refresh_token; // 刷新会轮换 refresh_token
-  const ttl = Number(data.expires_in) || 3600;
-  expiresAt = Date.now() + ttl * 1000;
-  saveSession();
-}
-// 用 refresh_token 换新 access_token(并发合流,只发一次)。成功=true;失败=false。
-let refreshing = null;
-function refreshSession() {
-  if (!refreshToken) return Promise.resolve(false);
-  if (!refreshing) {
-    refreshing = (async () => {
-      try {
-        const res = await fetch(SUPABASE_URL + '/auth/v1/token?grant_type=refresh_token', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'apikey': PUBLISHABLE_KEY },
-          body: JSON.stringify({ refresh_token: refreshToken }),
-        });
-        if (!res.ok) return false;
-        const data = await res.json();
-        if (!data.access_token) return false;
-        applyToken(data);
-        return true;
-      } catch (_e) { return false; }
-    })().finally(() => { refreshing = null; });
-  }
-  return refreshing;
-}
-// 请求前确保 access_token 未过期(临期 60s 内先静默续期)
-async function ensureFreshToken() {
-  if (!accessToken) return false;
-  if (Date.now() < expiresAt - 60000) return true;
-  return await refreshSession();
+function resetToLogin() {
+  sb.auth.signOut().catch(() => {});
+  showLogin();
 }
 
 // ---------------- fetch 封装 ----------------
@@ -368,15 +325,18 @@ async function readError(res) {
   } catch { return '请求失败 (' + res.status + ')'; }
 }
 async function callAdmin(body) {
-  await ensureFreshToken();
-  const doFetch = () => fetch(FN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'apikey': PUBLISHABLE_KEY, 'Authorization': 'Bearer ' + accessToken },
-    body: JSON.stringify(body),
-  });
-  let res = await doFetch();
+  const send = async () => {
+    const token = await getToken();
+    return fetch(FN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': PUBLISHABLE_KEY, 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify(body),
+    });
+  };
+  let res = await send();
   if (res.status === 401) {
-    if (await refreshSession()) res = await doFetch();
+    await sb.auth.refreshSession().catch(() => {});
+    res = await send();
     if (res.status === 401) {
       if (!document.getElementById('adminView').classList.contains('hidden')) resetToLogin();
       throw new Error('登录已失效,请重新登录');
@@ -386,15 +346,18 @@ async function callAdmin(body) {
   return res.json();
 }
 async function callPay(body) {
-  await ensureFreshToken();
-  const doFetch = () => fetch(PAY_FN_URL, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'apikey': PUBLISHABLE_KEY, 'Authorization': 'Bearer ' + accessToken },
-    body: JSON.stringify(body),
-  });
-  let res = await doFetch();
+  const send = async () => {
+    const token = await getToken();
+    return fetch(PAY_FN_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'apikey': PUBLISHABLE_KEY, 'Authorization': 'Bearer ' + token },
+      body: JSON.stringify(body),
+    });
+  };
+  let res = await send();
   if (res.status === 401) {
-    if (await refreshSession()) res = await doFetch();
+    await sb.auth.refreshSession().catch(() => {});
+    res = await send();
     if (res.status === 401) {
       if (!document.getElementById('adminView').classList.contains('hidden')) resetToLogin();
       throw new Error('登录已失效,请重新登录');
@@ -406,17 +369,14 @@ async function callPay(body) {
 
 // ---------------- 登录 ----------------
 async function doLogin(email, password) {
-  const res = await fetch(TOKEN_URL, {
-    method: 'POST', headers: { 'Content-Type': 'application/json', 'apikey': PUBLISHABLE_KEY },
-    body: JSON.stringify({ email, password }),
-  });
-  if (!res.ok) {
-    const msg = await readError(res);
+  await sb.auth.signOut().catch(() => {});
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) {
+    const msg = error.message || '登录失败';
     if (/invalid login credentials/i.test(msg)) throw new Error('邮箱或密码错误');
     if (/email not confirmed/i.test(msg)) throw new Error('邮箱尚未验证');
     throw new Error(msg);
   }
-  return await res.json(); // 完整会话:access_token / refresh_token / expires_in
 }
 
 document.getElementById('loginForm').addEventListener('submit', async (e) => {
@@ -427,12 +387,10 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
   if (!email || !password) return toast('请输入邮箱和密码', 'error');
   btn.disabled = true; btn.textContent = '登录中…';
   try {
-    const session = await doLogin(email, password);
+    await doLogin(email, password);
     currentEmail = email;
-    applyToken(session);
     const data = await callAdmin({ action: 'list' });
     if (data.role !== 'subadmin') {
-      resetToLogin();
       throw new Error('此账号不是代理,无法登录本后台');
     }
     callerId = data.callerId;
@@ -821,30 +779,24 @@ function cancelOrder(o) {
 function startOrderPolling() {
   stopOrderPolling();
   orderPollTimer = setInterval(async () => {
-    if (!accessToken) { stopOrderPolling(); return; }
+    if (!(await getToken())) { stopOrderPolling(); return; }
     try { await callPay({ action: 'scan', source: 'poll' }); } catch (_e) { /* 静默 */ }
     if (!document.getElementById('ordersView').classList.contains('hidden')) await loadOrders();
   }, 15000);
 }
 function stopOrderPolling() { if (orderPollTimer) { clearInterval(orderPollTimer); orderPollTimer = null; } }
 
-// ---------------- 页面加载:若本机存有会话,静默续期并直接进入后台(免重新登录)----------------
+// ---------------- 页面加载:supabase-js 自动恢复会话,有会话则直接进入后台(免重新登录)----------------
 (async function restoreSession() {
-  let saved = null;
-  try { saved = JSON.parse(localStorage.getItem(SESSION_KEY) || 'null'); } catch (_e) { saved = null; }
-  if (!saved || !saved.refresh_token) return;
-  accessToken = saved.access_token || null;
-  refreshToken = saved.refresh_token;
-  expiresAt = Number(saved.expires_at) || 0;
-  currentEmail = saved.email || '';
-  await ensureFreshToken(); // 临期/已过期则先用 refresh_token 续期
-  if (!accessToken) { clearSession(); return; }
+  const { data: { session } } = await sb.auth.getSession();
+  if (!session) return; // 无会话:留在登录页
+  currentEmail = session.user?.email || '';
   try {
     const data = await callAdmin({ action: 'list' });
     if (data.role !== 'subadmin') { resetToLogin(); return; }
     callerId = data.callerId; serverNow = data.server_now; pricing = data.pricing || {};
     onLoginSuccess(currentEmail, data.users);
-  } catch (_e) { /* 恢复失败(refresh_token 已失效等):留在登录页 */ clearSession(); }
+  } catch (_e) { /* 会话无效/网络问题:留在登录页 */ showLogin(); }
 })();
 </script>
 </body>
