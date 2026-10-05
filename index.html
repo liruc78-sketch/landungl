@@ -308,12 +308,15 @@ function toast(text, type = 'info') {
 function showLogin() {
   callerId = null; allUsers = []; pricing = {};
   stopOrderPolling();
+  // 付款弹窗的 6s 轮询也要停(审计第 37 组:旧版登出后一直空转,重新登录后还会弹出无关提示)
+  try { clearPayModalPoll(); } catch (_e) { /* 页面初始化早期调用时尚未定义,忽略 */ }
   document.getElementById('modalRoot').innerHTML = '';
   document.getElementById('adminView').classList.add('hidden');
   document.getElementById('loginView').classList.remove('hidden');
 }
 function resetToLogin() {
-  sb.auth.signOut().catch(() => {});
+  // scope:'local' 只退出本浏览器的会话(审计第 37 组:默认 global 会把同一账号在桌面客户端的会话一起注销)
+  sb.auth.signOut({ scope: 'local' }).catch(() => {});
   showLogin();
 }
 
@@ -369,7 +372,7 @@ async function callPay(body) {
 
 // ---------------- 登录 ----------------
 async function doLogin(email, password) {
-  await sb.auth.signOut().catch(() => {});
+  await sb.auth.signOut({ scope: 'local' }).catch(() => {});
   const { error } = await sb.auth.signInWithPassword({ email, password });
   if (error) {
     const msg = error.message || '登录失败';
@@ -677,13 +680,20 @@ function openPayModal(order) {
   actions.append(copyAddr, copyAmt, closeBtn); modal.appendChild(actions);
   mask.appendChild(modal); root.appendChild(mask);
 
+  let pollBusy = false; // 上一轮还没回来就跳过本轮(免 key 时查链要限速,6 秒内可能回不来,别叠加请求)
   const poll = async () => {
+    if (pollBusy) return;
+    pollBusy = true;
     try {
       const r = await callPay({ action: 'checkOrder', orderId: order.id });
       const st = document.getElementById('payModalStatus');
-      if (r.status === 'paid') { if (st) { st.className = 'badge badge-ok'; st.textContent = '已到账 · 已发放'; } clearPayModalPoll(); toast('订单已到账,已自动发放', 'success'); loadOrders(); }
+      if (r.status === 'paid') {
+        const undelivered = r.credited === false; // 用户已被删除:只记账未发放
+        if (st) { st.className = 'badge ' + (undelivered ? 'badge-banned' : 'badge-ok'); st.textContent = undelivered ? '已到账 · 用户已删除,未发放' : '已到账 · 已发放'; }
+        clearPayModalPoll(); toast(undelivered ? '已到账,但该用户已被删除,未发放(请退款或对账)' : '订单已到账,已自动发放', undelivered ? 'error' : 'success'); loadOrders();
+      }
       else if (r.status === 'cancelled' || r.status === 'expired') { if (st) { st.className = 'badge badge-banned'; st.textContent = r.status === 'expired' ? '已过期' : '已取消'; } clearPayModalPoll(); }
-    } catch (_e) { /* 静默 */ }
+    } catch (_e) { /* 静默 */ } finally { pollBusy = false; }
   };
   payModalPoll = setInterval(poll, 6000);
 }
@@ -691,6 +701,11 @@ function openPayModal(order) {
 // ---------------- 我的续费订单 ----------------
 let orderPollTimer = null;
 let myOrders = [];
+// 用户被删除后才到账的单:只记账、未发放(见迁移 0025,finalize 置 undelivered=true),单独标出供退款/对账
+function orderBadgeOf(o) {
+  if (o.status === 'paid' && o.undelivered === true) return { t: '已到账·未发放(用户已删除)', c: 'badge-banned' };
+  return ORDER_STATUS[o.status] || { t: o.status, c: 'badge-user' };
+}
 const ORDER_STATUS = {
   pending:   { t: '待支付', c: 'badge-user' },
   paid:      { t: '已到账', c: 'badge-ok' },
@@ -727,7 +742,7 @@ function renderOrders(orders) {
     const tdQty = document.createElement('td'); tdQty.className = 'muted'; tdQty.textContent = o.quantity + ' 天';
     const tdAmt = document.createElement('td'); tdAmt.style.fontVariantNumeric = 'tabular-nums'; tdAmt.textContent = Number(o.usdt_amount).toFixed(3) + ' U';
     const tdStatus = document.createElement('td');
-    const st = ORDER_STATUS[o.status] || { t: o.status, c: 'badge-user' };
+    const st = orderBadgeOf(o);
     tdStatus.appendChild(badge(st.t, st.c));
     const tdTime = document.createElement('td'); tdTime.className = 'muted'; tdTime.textContent = fmtDate(o.created_at);
     const tdAct = document.createElement('td');
@@ -748,7 +763,7 @@ function renderOrders(orders) {
 async function checkOneOrder(o) {
   try {
     const r = await callPay({ action: 'checkOrder', orderId: o.id });
-    if (r.status === 'paid') toast('已到账,已自动发放', 'success');
+    if (r.status === 'paid') toast(r.credited === false ? '已到账,但该用户已被删除,未发放(请退款或对账)' : '已到账,已自动发放', r.credited === false ? 'error' : 'success');
     else if (r.status === 'pending') toast('尚未检测到到账,请稍候', 'info');
     else toast('订单' + (ORDER_STATUS[r.status] ? ORDER_STATUS[r.status].t : r.status), 'info');
     await loadOrders();
